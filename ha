@@ -24,19 +24,27 @@ get_state() {
 case "$ACTION" in
 
   status)
-    RESPONSE=$(get_state)
-    STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
     if [ "$DOMAIN" = "light" ]; then
-      if [ "$STATE" = "on" ]; then
-        PCT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); b=d['attributes'].get('brightness',255); print(int(round(b/255*100)))" 2>/dev/null)
-        echo "💡 ${PCT}%"
-      else
-        echo "○ $SHORT"
-      fi
+      curl -sf \
+        -H "Authorization: Bearer $HA_TOKEN" \
+        -H "Content-Type: application/json" \
+        "$HA_URL/api/states" 2>/dev/null | python3 -c "
+import sys, json
+states = json.load(sys.stdin)
+on_lights = [s for s in states if s['entity_id'].startswith('light.') and s['state'] == 'on']
+if on_lights:
+    avg = sum(int(s['attributes'].get('brightness', 255)) for s in on_lights) / len(on_lights)
+    print('💡 {}%'.format(int(round(avg / 255 * 100))))
+else:
+    print('○ $SHORT')
+" 2>/dev/null
     elif [ "$DOMAIN" = "switch" ] || [ "$DOMAIN" = "input_boolean" ]; then
+      RESPONSE=$(get_state)
+      STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
       [ "$STATE" = "on" ] && echo "⚡ $SHORT" || echo "○ $SHORT"
     else
-      echo "$STATE"
+      RESPONSE=$(get_state)
+      echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null
     fi
     ;;
 
@@ -49,43 +57,48 @@ case "$ACTION" in
     ;;
 
   brightness_up)
-    RESPONSE=$(get_state)
-    STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
-    if [ "$STATE" = "off" ]; then
-      NEW=128  # turn on at 50% if currently off
-    else
-      CUR=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(int(d['attributes'].get('brightness', 128)))" 2>/dev/null)
-      NEW=$(python3 -c "print(min(255, $CUR + 26))")
-    fi
-    curl -sf -X POST \
+    curl -sf \
       -H "Authorization: Bearer $HA_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"entity_id\": \"$ENTITY\", \"brightness\": $NEW}" \
-      "$HA_URL/api/services/light/turn_on" > /dev/null 2>&1
+      "$HA_URL/api/states" 2>/dev/null | python3 -c "
+import sys, json, urllib.request
+ha_url = '$HA_URL'
+ha_token = '$HA_TOKEN'
+headers = {'Authorization': 'Bearer ' + ha_token, 'Content-Type': 'application/json'}
+on_lights = [s for s in json.load(sys.stdin) if s['entity_id'].startswith('light.') and s['state'] == 'on']
+for light in on_lights:
+    cur = int(light['attributes'].get('brightness', 128))
+    new = min(255, cur + 26)
+    req = urllib.request.Request(ha_url + '/api/services/light/turn_on',
+        data=json.dumps({'entity_id': light['entity_id'], 'brightness': new}).encode(),
+        headers=headers, method='POST')
+    urllib.request.urlopen(req)
+" 2>/dev/null
     ;;
 
   brightness_down)
-    RESPONSE=$(get_state)
-    STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
-    if [ "$STATE" = "off" ]; then
-      : # already off, nothing to do
-    else
-      CUR=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(int(d['attributes'].get('brightness', 128)))" 2>/dev/null)
-      NEW=$(python3 -c "print(max(0, $CUR - 26))")
-      if [ "$NEW" -le 0 ]; then
-        curl -sf -X POST \
-          -H "Authorization: Bearer $HA_TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "{\"entity_id\": \"$ENTITY\"}" \
-          "$HA_URL/api/services/light/turn_off" > /dev/null 2>&1
-      else
-        curl -sf -X POST \
-          -H "Authorization: Bearer $HA_TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "{\"entity_id\": \"$ENTITY\", \"brightness\": $NEW}" \
-          "$HA_URL/api/services/light/turn_on" > /dev/null 2>&1
-      fi
-    fi
+    curl -sf \
+      -H "Authorization: Bearer $HA_TOKEN" \
+      -H "Content-Type: application/json" \
+      "$HA_URL/api/states" 2>/dev/null | python3 -c "
+import sys, json, urllib.request
+ha_url = '$HA_URL'
+ha_token = '$HA_TOKEN'
+headers = {'Authorization': 'Bearer ' + ha_token, 'Content-Type': 'application/json'}
+on_lights = [s for s in json.load(sys.stdin) if s['entity_id'].startswith('light.') and s['state'] == 'on']
+for light in on_lights:
+    cur = int(light['attributes'].get('brightness', 128))
+    new = max(0, cur - 26)
+    if new <= 0:
+        req = urllib.request.Request(ha_url + '/api/services/light/turn_off',
+            data=json.dumps({'entity_id': light['entity_id']}).encode(),
+            headers=headers, method='POST')
+    else:
+        req = urllib.request.Request(ha_url + '/api/services/light/turn_on',
+            data=json.dumps({'entity_id': light['entity_id'], 'brightness': new}).encode(),
+            headers=headers, method='POST')
+    urllib.request.urlopen(req)
+" 2>/dev/null
     ;;
 
   person)
@@ -147,16 +160,16 @@ case "$ACTION" in
     ;;
 
   where)
-    # Get person state
-    PERSON=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/person.person_name" 2>/dev/null)
+    # Get person state - edit entity IDs below to match your setup
+    PERSON=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/person.your_name" 2>/dev/null)
     STATE=$(echo "$PERSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
 
     case "$STATE" in
       home)
         # Check FP2 bedroom zones
-        DESK=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.presence_fp2_bedroom_desk" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
-        BED=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.presence_fp2_bedroom_bed" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
-        BEDROOM=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.presence_fp2_bedroom" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
+        DESK=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.your_fp2_desk_zone" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
+        BED=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.your_fp2_bed_zone" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
+        BEDROOM=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.your_fp2_bedroom_zone" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
         if [ "$DESK" = "on" ]; then
           echo "💻 Desk"
         elif [ "$BED" = "on" ]; then
