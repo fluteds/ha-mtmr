@@ -1,0 +1,214 @@
+//─ Home Assistant MTMR buttons───────────────────────────────────────────
+// Drop these items into your MTMR items.json array.
+// Replace entity IDs with your own values.
+// Find entity IDs in HA → Developer Tools → States.
+//
+// IMPORTANT: actions must use "appleScript" + "do shell script" -
+// the "shellScript" action type crashes MTMR.
+
+  // Lights
+
+  // Light toggle shows 💡 72% when on, ○ Name when off
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 5,
+    "bordered": false,
+    "width": 46,
+    "source": {
+      "inline": "${HOME}/.ha status light.your_light"
+    },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha toggle light.your_light\""
+        }
+      }
+    ]
+  },
+
+  // Light toggle with custom short name (useful for long entity names)
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 5,
+    "bordered": false,
+    "width": 40,
+    "source": {
+      "inline": "${HOME}/.ha status light.your_light NL"
+    },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha toggle light.your_light\""
+        }
+      }
+    ]
+  },
+
+  // Brightness down
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 86400,
+    "bordered": false,
+    "width": 28,
+    "source": { "inline": "echo 🔅" },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha brightness_down light.your_light\""
+        }
+      }
+    ]
+  },
+
+  // Brightness up
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 86400,
+    "bordered": false,
+    "width": 28,
+    "source": { "inline": "echo 🔆" },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha brightness_up light.your_light\""
+        }
+      }
+    ]
+  },
+
+  // Switches 
+
+  // Switch toggle - shows ⚡ Name when on, ○ Name when off
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 5,
+    "bordered": false,
+    "width": 46,
+    "source": {
+      "inline": "${HOME}/.ha status switch.your_switch"
+    },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha toggle switch.your_switch\""
+        }
+      }
+    ]
+  },
+
+  // Scenes
+
+  // Activate a scene (tap to run)
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 86400,
+    "bordered": false,
+    "width": 60,
+    "source": { "inline": "echo 🎨 Movie" },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha scene_activate scene.movie_night\""
+        }
+      }
+    ]
+  },
+
+  // Scripts
+
+  // Run a HA script (tap to trigger)
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 86400,
+    "bordered": false,
+    "width": 60,
+    "source": { "inline": "echo 🌙 Wind Down" },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha script script.wind_down\""
+        }
+      }
+    ]
+  },
+
+  // Automations
+
+  // Trigger an automation (tap to fire)
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 86400,
+    "bordered": false,
+    "width": 60,
+    "source": { "inline": "echo 🤖 Desk Mode" },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha automation automation.desk_mode\""
+        }
+      }
+    ]
+  },
+
+  // Sensors
+
+  // Display a sensor value - read-only, refreshes every 60s
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 60,
+    "bordered": false,
+    "width": 70,
+    "source": {
+      "inline": "${HOME}/.ha sensor sensor.bedroom_co2_monitor_temperature Temp"
+    }
+  },
+
+  // Presence 
+
+  // Presence - shows room if home (requires Aqara FP2 zones), or HA zone when away
+  // Edit the `where` case in the ha script to match your entity IDs
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 10,
+    "bordered": false,
+    "width": 68,
+    "source": {
+      "inline": "${HOME}/.ha where"
+    }
+  },
+
+  // Open HA
+
+  // Open Home Assistant in the browser
+  {
+    "type": "shellScriptTitledButton",
+    "refreshInterval": 86400,
+    "bordered": false,
+    "width": 28,
+    "source": { "inline": "echo 🏡" },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "appleScript",
+        "actionAppleScript": {
+          "inline": "do shell script \"${HOME}/.ha open\""
+        }
+      }
+    ]
+  },
