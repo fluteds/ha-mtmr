@@ -25,19 +25,14 @@ case "$ACTION" in
 
   status)
     if [ "$DOMAIN" = "light" ]; then
-      curl -sf \
-        -H "Authorization: Bearer $HA_TOKEN" \
-        -H "Content-Type: application/json" \
-        "$HA_URL/api/states" 2>/dev/null | python3 -c "
-import sys, json
-states = json.load(sys.stdin)
-on_lights = [s for s in states if s['entity_id'].startswith('light.') and s['state'] == 'on']
-if on_lights:
-    avg = sum(int(s['attributes'].get('brightness', 255)) for s in on_lights) / len(on_lights)
-    print('💡 {}%'.format(int(round(avg / 255 * 100))))
-else:
-    print('○ $SHORT')
-" 2>/dev/null
+      RESPONSE=$(get_state)
+      STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
+      if [ "$STATE" = "on" ]; then
+        PCT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); b=d['attributes'].get('brightness',255); print(int(round(b/255*100)))" 2>/dev/null)
+        echo "💡 ${PCT}%"
+      else
+        echo "○ $SHORT"
+      fi
     elif [ "$DOMAIN" = "switch" ] || [ "$DOMAIN" = "input_boolean" ]; then
       RESPONSE=$(get_state)
       STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
