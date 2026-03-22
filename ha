@@ -14,6 +14,24 @@ SHORT_KEY="${ENTITY##*.}"
 AUTO_SHORT="$(echo "${SHORT_KEY//_/ }" | awk '{print toupper(substr($1,1,1)) substr($1,2)}')"
 SHORT="${3:-$AUTO_SHORT}"
 
+CACHE_DIR="/tmp/ha_cache"
+mkdir -p "$CACHE_DIR"
+
+# Print cached value if file exists and is fresher than $2 seconds (default 60)
+cache_get() {
+  local file="$CACHE_DIR/$1"
+  local max_age="${2:-60}"
+  if [ -f "$file" ] && [ $(( $(date +%s) - $(stat -f %m "$file") )) -lt "$max_age" ]; then
+    cat "$file"
+    return 0
+  fi
+  return 1
+}
+
+cache_set() {
+  printf '%s\n' "$2" > "$CACHE_DIR/$1"
+}
+
 get_state() {
   curl -sf \
     -H "Authorization: Bearer $HA_TOKEN" \
@@ -24,23 +42,27 @@ get_state() {
 case "$ACTION" in
 
   status)
+    CACHE_KEY="status_${ENTITY//[^a-zA-Z0-9]/_}_${SHORT//[^a-zA-Z0-9]/_}"
+    if cache_get "$CACHE_KEY"; then exit 0; fi
     if [ "$DOMAIN" = "light" ]; then
       RESPONSE=$(get_state)
       STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
       if [ "$STATE" = "on" ]; then
-        PCT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); b=d['attributes'].get('brightness',255); print(int(round(b/255*100)))" 2>/dev/null)
-        echo "💡 ${PCT}%"
+        PCT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); b=d['attributes'].get('brightness') or 255; print(int(round(b/255*100)))" 2>/dev/null)
+        OUT="💡 $SHORT ${PCT}%"
       else
-        echo "○ $SHORT"
+        OUT="○ $SHORT"
       fi
     elif [ "$DOMAIN" = "switch" ] || [ "$DOMAIN" = "input_boolean" ]; then
       RESPONSE=$(get_state)
       STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
-      [ "$STATE" = "on" ] && echo "⚡ $SHORT" || echo "○ $SHORT"
+      [ "$STATE" = "on" ] && OUT="🌬️ $SHORT" || OUT="○ $SHORT"
     else
       RESPONSE=$(get_state)
-      echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null
+      OUT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
     fi
+    cache_set "$CACHE_KEY" "$OUT"
+    echo "$OUT"
     ;;
 
   toggle)
@@ -49,6 +71,22 @@ case "$ACTION" in
       -H "Content-Type: application/json" \
       -d "{\"entity_id\": \"$ENTITY\"}" \
       "$HA_URL/api/services/homeassistant/toggle" > /dev/null 2>&1
+    # Bust cache so next status refresh reflects the new state
+    ENTITY_KEY="${ENTITY//[^a-zA-Z0-9]/_}"
+    rm -f "$CACHE_DIR"/status_${ENTITY_KEY}_*
+    ;;
+
+  light_icon)
+    # Output $ENTITY (pass an emoji as entity arg) if any lights are on, empty otherwise
+    # Used to show/hide brightness buttons: ~/.ha light_icon 🔅
+    curl -sf \
+      -H "Authorization: Bearer $HA_TOKEN" \
+      -H "Content-Type: application/json" \
+      "$HA_URL/api/states" 2>/dev/null | python3 -c "
+import sys, json
+lights = [s for s in json.load(sys.stdin) if s['entity_id'].startswith('light.') and s['state'] == 'on']
+print('$ENTITY' if lights else '')
+" 2>/dev/null
     ;;
 
   brightness_up)
@@ -143,10 +181,14 @@ for light in on_lights:
 
   sensor)
     # Display a sensor value - e.g. temperature, humidity
+    CACHE_KEY="sensor_${ENTITY//[^a-zA-Z0-9]/_}"
+    if cache_get "$CACHE_KEY" 60; then exit 0; fi
     RESPONSE=$(get_state)
     STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
     UNIT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['attributes'].get('unit_of_measurement',''))" 2>/dev/null)
-    echo "$SHORT $STATE$UNIT"
+    OUT="$SHORT $STATE$UNIT"
+    cache_set "$CACHE_KEY" "$OUT"
+    echo "$OUT"
     ;;
 
   open)
@@ -155,31 +197,32 @@ for light in on_lights:
     ;;
 
   where)
-    # Get person state - edit entity IDs below to match your setup
-    PERSON=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/person.your_name" 2>/dev/null)
+    if cache_get "where" 30; then exit 0; fi
+    # Get person state
+    PERSON=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/person.autumn" 2>/dev/null)
     STATE=$(echo "$PERSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])" 2>/dev/null)
 
     case "$STATE" in
       home)
         # Check FP2 bedroom zones
-        DESK=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.your_fp2_desk_zone" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
-        BED=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.your_fp2_bed_zone" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
-        BEDROOM=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.your_fp2_bedroom_zone" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
+        DESK=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.presence_fp2_bedroom_desk" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
+        BED=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.presence_fp2_bedroom_bed" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
+        BEDROOM=$(curl -sf -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/binary_sensor.presence_fp2_bedroom" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])" 2>/dev/null)
         if [ "$DESK" = "on" ]; then
-          echo "💻 Desk"
-        elif [ "$BED" = "on" ]; then
-          echo "🛏 Bed"
-        elif [ "$BEDROOM" = "on" ]; then
-          echo "🛏 Bedroom"
+          OUT="💻 Desk"
+        elif [ "$BED" = "on" ] || [ "$BEDROOM" = "on" ]; then
+          OUT="🛏 Bed"
         else
-          echo "🏠 Home"
+          OUT="🏠 Home"
         fi
         ;;
-      gym)       echo "🏋 Gym" ;;
-      work)      echo "💼 Work" ;;
-      not_home)  echo "🚗 Away" ;;
-      *)         echo "🚗 $STATE" ;;
+      gym)       OUT="🏋 Gym" ;;
+      work)      OUT="💼 Work" ;;
+      not_home)  OUT="🚗 Away" ;;
+      *)         OUT="🚗 $STATE" ;;
     esac
+    cache_set "where" "$OUT"
+    echo "$OUT"
     ;;
 
 esac

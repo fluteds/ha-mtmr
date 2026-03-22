@@ -8,6 +8,8 @@ Home Assistant controls for the macOS Touch Bar via [MTMR](https://github.com/To
 - Display live sensor readings (temperature, CO2, etc.)
 - Presence indicator - shows your current room when home (bed, desk, etc.) or your HA zone when away
 - Open HA in the browser
+- Group all HA buttons behind a single `🏠 Home` popover to save space
+- State caching - buttons read from `/tmp/ha_cache/` so opens are instant; cache is busted on toggle so state reflects within ~5 seconds
 
 ![The image displays the top section of a user interface with various icons and text on a black background. From left to right, there is a light bulb icon, text reading "O Desk O NL," followed by sun icons and a lightning bolt icon, and "O Bed." Next are media control icons for play/pause, previous, and next tracks. The text "RAYE – Nightingale Lane" is followed by a sun icon with "17°C." Further right is a muted speaker icon, a graph, a crescent moon icon, a circle icon, more sun icons, and a battery icon showing 98% with the time left "2:01."](touchbar.png)
 

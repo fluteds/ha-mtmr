@@ -11,7 +11,7 @@
   // Light toggle shows 💡 72% when on, ○ Name when off
   {
     "type": "shellScriptTitledButton",
-    "refreshInterval": 5,
+    "refreshInterval": 30,
     "bordered": false,
     "width": 46,
     "source": {
@@ -31,7 +31,7 @@
   // Light toggle with custom short name (useful for long entity names)
   {
     "type": "shellScriptTitledButton",
-    "refreshInterval": 5,
+    "refreshInterval": 30,
     "bordered": false,
     "width": 40,
     "source": {
@@ -89,7 +89,7 @@
   // Switch toggle - shows ⚡ Name when on, ○ Name when off
   {
     "type": "shellScriptTitledButton",
-    "refreshInterval": 5,
+    "refreshInterval": 30,
     "bordered": false,
     "width": 46,
     "source": {
@@ -185,7 +185,7 @@
   // Edit the `where` case in the ha script to match your entity IDs
   {
     "type": "shellScriptTitledButton",
-    "refreshInterval": 10,
+    "refreshInterval": 30,
     "bordered": false,
     "width": 68,
     "source": {
